@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: otel-datadog-poc
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    export:
+      otlp:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://datadog-agent:4317
+
+otel:
+  sdk:
+    disabled: false
+  exporter:
+    otlp:
+      protocol: grpc
+      endpoint: http://datadog-agent:4317
+
+logging:
+  level:
+    root: INFO
+    com.example.demo: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

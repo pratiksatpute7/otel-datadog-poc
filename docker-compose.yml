@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # Spring Boot Application with serverless-init wrapper and OpenTelemetry agent
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: otel-datadog-poc-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_APPLICATION_NAME: otel-datadog-poc
+      # Datadog Serverless Init Configuration
+      DD_SERVICE: otel-datadog-poc
+      DD_TRACE_ENABLED: "true"
+      DD_PROFILING_ENABLED: "true"
+      DD_LOGS_INJECTION: "true"
+      DD_API_KEY: "${DD_API_KEY}"
+      DD_SITE: "us5.datadoghq.com"
+      DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT: "0.0.0.0:4317"
+      DD_TRACE_TAGS: "trace_source:otel-datadog-poc-dual-instrumentation"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=otel-datadog-poc,instrumentation.source=opentelemetry"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./logs:/app/logs

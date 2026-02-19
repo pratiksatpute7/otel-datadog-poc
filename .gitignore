@@ -1,0 +1,16 @@
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+target/
+*.class
+*.jar
+*.log
+node_modules/
+.env
+.env.local
+*.pid
+logs/
