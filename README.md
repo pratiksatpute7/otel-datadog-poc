@@ -7,7 +7,6 @@ A Spring Boot 3 CRUD application used to demonstrate OpenTelemetry-based tracing
 - Java 17
 - Spring Boot 3.2.3 (`web`, `data-jpa`, `actuator`)
 - H2 in-memory database
-- Micrometer OpenTelemetry bridge (`micrometer-tracing-bridge-otel`)
 - OpenTelemetry Java Agent (downloaded in `Dockerfile`)
 - Datadog `serverless-init` wrapper in container runtime
 - Docker Compose for local orchestration
@@ -24,7 +23,7 @@ A Spring Boot 3 CRUD application used to demonstrate OpenTelemetry-based tracing
 ### Observability Flow
 
 1. `java -javaagent:opentelemetry-javaagent.jar -jar app.jar` enables automatic instrumentation.
-2. Spring/Micrometer tracing and OTLP settings are configured in `application.yml`.
+2. Spring tracing and OTLP settings are configured in `application.yml`.
 3. Traces are exported to `http://datadog-agent:4317` (OTLP gRPC endpoint configured for runtime).
 4. Container entrypoint uses Datadog `serverless-init` (`/app/datadog-init`).
 

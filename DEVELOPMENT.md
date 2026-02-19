@@ -64,7 +64,6 @@ src/main/java/com/example/demo/
 
 ### Dependencies in use
 
-- `io.micrometer:micrometer-tracing-bridge-otel`
 - `io.opentelemetry:opentelemetry-api`
 - `org.springframework.boot:spring-boot-starter-actuator`
 
