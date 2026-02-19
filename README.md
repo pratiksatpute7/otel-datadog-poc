@@ -30,6 +30,43 @@ A Spring Boot 3 CRUD application used to demonstrate OpenTelemetry-based tracing
 
 End-to-end path: OpenTelemetry Java Agent auto-instruments the app, traces are sent over OTLP to the Datadog serverless wrapper runtime, and that runtime forwards telemetry to Datadog.
 
+### Manual Custom Spans (alongside auto-instrumentation)
+
+This project now includes `CustomSpanHelper` for manual spans:
+
+- `inSpan(spanName, action)` creates a span as a child of the current trace context.
+- `inNewTrace(spanName, action)` creates a new root span with no parent (new trace).
+- `setAttribute(span, key, value)` lets you add attributes case-by-case.
+
+Example usage in service code:
+
+```java
+return customSpanHelper.inSpan("product.service.get_by_id", span -> {
+	customSpanHelper.setAttribute(span, "product.id", id);
+	Optional<Product> product = productRepository.findById(id);
+	if (product.isEmpty()) {
+		span.addEvent("product.not_found");
+	}
+	return product;
+});
+```
+
+Example for forcing a new trace:
+
+```java
+customSpanHelper.inNewTrace("product.seed.initialize", span -> {
+	customSpanHelper.setAttribute(span, "product.seed.count", 3);
+	// business logic
+	return null;
+});
+```
+
+Current implementation locations:
+
+- `src/main/java/com/example/demo/tracing/CustomSpanHelper.java`
+- `src/main/java/com/example/demo/service/ProductService.java`
+- `src/main/java/com/example/demo/DataInitializer.java`
+
 ## Project Structure
 
 ```

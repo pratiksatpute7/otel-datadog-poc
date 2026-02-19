@@ -80,6 +80,34 @@ java -javaagent:opentelemetry-javaagent.jar -jar app.jar
 
 Telemetry path in this project: OpenTelemetry Java Agent performs auto-instrumentation, traces are emitted via OTLP to the Datadog serverless wrapper runtime, and that runtime forwards data to Datadog.
 
+### Manual instrumentation
+
+Manual OpenTelemetry spans are implemented using:
+
+- `src/main/java/com/example/demo/config/OpenTelemetryConfig.java`
+- `src/main/java/com/example/demo/tracing/CustomSpanHelper.java`
+
+`CustomSpanHelper` provides:
+
+- `inSpan(name, action)` for child spans on the current trace
+- `inNewTrace(name, action)` for creating a new root trace when required
+- `setAttribute(span, key, value)` for flexible attribute assignment
+
+Manual spans are currently added in:
+
+- `ProductService` methods for CRUD business operations
+- `DataInitializer` startup seed flow (`product.seed.initialize`) as a new trace example
+
+Pattern for adding attributes/events case by case:
+
+```java
+return customSpanHelper.inSpan("operation.name", span -> {
+  customSpanHelper.setAttribute(span, "entity.id", id);
+  span.addEvent("event.name");
+  return actionResult;
+});
+```
+
 ### Configuration (`application.yml`)
 
 ```yaml
