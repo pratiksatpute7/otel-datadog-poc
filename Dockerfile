@@ -27,7 +27,7 @@ WORKDIR /app
 COPY --from=serverless-init /datadog-init /app/datadog-init
 
 # Copy JAR from builder stage
-COPY --from=builder /build/target/otel-datadog-poc-1.0.0.jar app.jar
+COPY --from=builder /build/target/otel-datadog-1.0.0.jar app.jar
 
 # Download OpenTelemetry Java Agent (optional - serverless-init provides automatic instrumentation)
 RUN apt-get update && apt-get install -y curl && \

@@ -14,15 +14,15 @@ This guide documents the current implementation for local development and code c
 ### 1) Build and run on JVM
 
 ```bash
-cd /Users/pratiksatpute/Developer/Projects/otel-datadog-poc
+cd /Users/pratiksatpute/Developer/Projects/otel-datadog
 mvn clean package
-java -jar target/otel-datadog-poc-1.0.0.jar
+java -jar target/otel-datadog-1.0.0.jar
 ```
 
 ### 2) Build and run with Docker Compose
 
 ```bash
-cd /Users/pratiksatpute/Developer/Projects/otel-datadog-poc
+cd /Users/pratiksatpute/Developer/Projects/otel-datadog
 docker-compose up --build
 ```
 
@@ -123,7 +123,7 @@ mvn clean package
 mvn test
 
 # Run app locally
-java -jar target/otel-datadog-poc-1.0.0.jar
+java -jar target/otel-datadog-1.0.0.jar
 
 # Run API smoke script
 bash test-api.sh

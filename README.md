@@ -33,7 +33,7 @@ End-to-end path: OpenTelemetry Java Agent auto-instruments the app, traces are s
 ## Project Structure
 
 ```
-otel-datadog-poc/
+otel-datadog/
 ├── src/main/java/com/example/demo/
 │   ├── DemoApplication.java
 │   ├── DataInitializer.java
@@ -80,7 +80,7 @@ cp .env.example .env
 ```
 
 ```bash
-cd /Users/pratiksatpute/Developer/Projects/otel-datadog-poc
+cd /Users/pratiksatpute/Developer/Projects/otel-datadog
 docker-compose up --build
 ```
 
@@ -94,7 +94,7 @@ Or use helper script:
 
 ```bash
 mvn clean package
-java -jar target/otel-datadog-poc-1.0.0.jar
+java -jar target/otel-datadog-1.0.0.jar
 ```
 
 ## Verify Locally
@@ -114,7 +114,7 @@ bash test-api.sh
 
 ### `application.yml` highlights
 
-- App name: `otel-datadog-poc`
+- App name: `otel-datadog`
 - Server port: `8080`
 - H2 datasource: `jdbc:h2:mem:testdb`
 - JPA schema: `ddl-auto: create-drop`
