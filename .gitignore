@@ -14,3 +14,17 @@ node_modules/
 .env.local
 *.pid
 logs/
+
+# .NET / C#
+**/bin/
+**/obj/
+*.user
+*.rsuser
+*.suo
+*.userprefs
+*.sln.docstates
+*.VisualState.xml
+TestResult*/
+*.nupkg
+*.snupkg
+.nuget/

@@ -1,30 +1,174 @@
 version: '3.8'
 
 services:
-  # Spring Boot Application with serverless-init wrapper and OpenTelemetry agent
+  sqledge:
+    container_name: sqledge
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: ${ACCEPT_EULA}
+      MSSQL_SA_PASSWORD: ${SQL_PASSWORD}
+    networks:
+      - app-net
+
+  servicebus-emulator:
+    container_name: servicebus-emulator
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    depends_on:
+      - sqledge
+    volumes:
+      - ./infra/servicebus/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    ports:
+      - "5672:5672"
+      - "5300:5300"
+    environment:
+      SQL_SERVER: sqledge
+      MSSQL_SA_PASSWORD: ${SQL_PASSWORD}
+      ACCEPT_EULA: ${ACCEPT_EULA}
+      SQL_WAIT_INTERVAL: ${SQL_WAIT_INTERVAL}
+      EMULATOR_HTTP_PORT: ${EMULATOR_HTTP_PORT}
+    networks:
+      app-net:
+        aliases:
+          - sb-emulator
+
   app:
     build:
-      context: .
+      context: ./services/java-orchestrator
       dockerfile: Dockerfile
     container_name: otel-datadog-app
+    depends_on:
+      - servicebus-emulator
+      - job-manager
+      - pricer
     ports:
       - "8080:8080"
     environment:
       SPRING_APPLICATION_NAME: otel-datadog
-      # Datadog Serverless Init Configuration
       DD_SERVICE: otel-datadog
       DD_TRACE_ENABLED: "true"
-      DD_PROFILING_ENABLED: "true"
-      DD_LOGS_INJECTION: "true"
-      DD_API_KEY: "${DD_API_KEY}"
-      DD_SITE: "us5.datadoghq.com"
+      DD_PROFILING_ENABLED: "false"
+      DD_LOGS_INJECTION: "false"
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE}
       DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT: "0.0.0.0:4317"
-      DD_TRACE_TAGS: "trace_source:otel-datadog-dual-instrumentation"
+      DD_TRACE_TAGS: "trace_source:workflow-java-dotnet"
       OTEL_RESOURCE_ATTRIBUTES: "service.name=otel-datadog,instrumentation.source=opentelemetry"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_TRACES_EXPORTER: "otlp"
+      OTEL_PROPAGATORS: "tracecontext,baggage"
+      OTEL_SDK_DISABLED: "false"
+      SERVICEBUS_CONNECTION_STRING: "Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+      JOB_MANAGER_URL: "http://job-manager:8081"
+      PRICER_URL: "http://pricer:8083"
+      JOB_PROCESSED_TOPIC: "job-processed"
+      JOB_PROCESSED_SUBSCRIPTION: "java-sub"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     volumes:
       - ./logs:/app/logs
+    networks:
+      - app-net
+
+  job-manager:
+    build:
+      context: ./services/job-manager/JobManager.Api
+      dockerfile: Dockerfile
+    container_name: job-manager
+    depends_on:
+      - servicebus-emulator
+    ports:
+      - "8081:8081"
+    environment:
+      ASPNETCORE_URLS: "http://+:8081"
+      DD_SERVICE: job-manager
+      DD_TRACE_ENABLED: "true"
+      DD_PROFILING_ENABLED: "false"
+      DD_LOGS_INJECTION: "false"
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE}
+      DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT: "0.0.0.0:4317"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_TRACES_EXPORTER: "otlp"
+      OTEL_PROPAGATORS: "tracecontext,baggage"
+      SERVICEBUS_CONNECTION_STRING: "Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+      JOB_CREATED_TOPIC: "job-created"
+      AZURE_EXPERIMENTAL_ENABLE_ACTIVITY_SOURCE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app-net
+
+  dps-worker:
+    build:
+      context: ./services/dps-worker/Dps.Worker
+      dockerfile: Dockerfile
+    container_name: dps-worker
+    depends_on:
+      - servicebus-emulator
+    ports:
+      - "8082:8082"
+    environment:
+      ASPNETCORE_URLS: "http://+:8082"
+      DD_SERVICE: dps-worker
+      DD_TRACE_ENABLED: "true"
+      DD_PROFILING_ENABLED: "false"
+      DD_LOGS_INJECTION: "false"
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE}
+      DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT: "0.0.0.0:4317"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_TRACES_EXPORTER: "otlp"
+      # OTEL_PROPAGATORS: "tracecontext,baggage"
+      SERVICEBUS_CONNECTION_STRING: "Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+      JOB_CREATED_TOPIC: "job-created"
+      JOB_CREATED_SUBSCRIPTION: "dps-sub"
+      JOB_PROCESSED_TOPIC: "job-processed"
+      AZURE_EXPERIMENTAL_ENABLE_ACTIVITY_SOURCE: "true"   
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8082'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app-net
+
+  pricer:
+    build:
+      context: ./services/pricer/Pricer.Api
+      dockerfile: Dockerfile
+    container_name: pricer
+    ports:
+      - "8083:8083"
+    environment:
+      ASPNETCORE_URLS: "http://+:8083"
+      DD_SERVICE: pricer
+      DD_TRACE_ENABLED: "true"
+      DD_PROFILING_ENABLED: "false"
+      DD_LOGS_INJECTION: "false"
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE}
+      DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT: "0.0.0.0:4317"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_TRACES_EXPORTER: "otlp"
+      # OTEL_PROPAGATORS: "tracecontext,baggage"
+      AZURE_EXPERIMENTAL_ENABLE_ACTIVITY_SOURCE: "true"  
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app-net
+
+networks:
+  app-net:

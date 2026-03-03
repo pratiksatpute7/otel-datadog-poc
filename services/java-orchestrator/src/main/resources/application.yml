@@ -21,29 +21,21 @@ spring:
 server:
   port: 8080
 
+workflow:
+  job-manager-url: ${JOB_MANAGER_URL:http://job-manager:8081}
+  pricer-url: ${PRICER_URL:http://pricer:8083}
+
+azure:
+  servicebus:
+    connection-string: ${SERVICEBUS_CONNECTION_STRING:Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;}
+    topic-job-processed: ${JOB_PROCESSED_TOPIC:job-processed}
+    subscription-job-processed: ${JOB_PROCESSED_SUBSCRIPTION:java-sub}
+
 management:
   endpoints:
     web:
       exposure:
         include: health,metrics,prometheus
-  metrics:
-    export:
-      otlp:
-        enabled: true
-  tracing:
-    sampling:
-      probability: 1.0
-  otlp:
-    tracing:
-      endpoint: http://datadog-agent:4317
-
-otel:
-  sdk:
-    disabled: false
-  exporter:
-    otlp:
-      protocol: grpc
-      endpoint: http://datadog-agent:4317
 
 logging:
   level:

@@ -1,120 +1,221 @@
 # API Documentation
 
-This document reflects the current implementation in `ProductController` and `ProductService`.
+This document reflects the current Java + .NET workflow and product APIs.
 
-## Base URL
+## Base URLs
+
+- Java app: `http://localhost:8080`
+- Job Manager: `http://localhost:8081`
+- Job Processing Worker health: `http://localhost:8082`
+- Pricing Service: `http://localhost:8083`
+
+## Workflow API (Java)
+
+### Start Workflow
+
+**Request**
+
+```http
+POST /api/v1/workflow/start
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "jobName": "pricing-job",
+  "amount": 100.0
+}
+```
+
+**Response (`202 Accepted`)**
+
+```json
+{
+  "jobId": "d2d95a2c-9b9d-4f24-bdb3-c2f4d2a11db5",
+  "correlationId": "70284642-f8bb-48f9-a50f-171bcb1d8248",
+  "status": "JOB_SUBMITTED"
+}
+```
+
+## Internal .NET APIs
+
+These endpoints are primarily called by internal services.
+
+### Job Manager
+
+#### Create Job
+
+**Request**
+
+```http
+POST /api/v1/jobs
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "jobId": "optional-string",
+  "correlationId": "optional-string",
+  "jobName": "pricing-job",
+  "amount": 100.0
+}
+```
+
+If `jobId` or `correlationId` is missing/blank, Job Manager generates them.
+
+**Response (`202 Accepted`)**
+
+```json
+{
+  "jobId": "generated-or-provided-id",
+  "correlationId": "generated-or-provided-correlation-id",
+  "status": "JOB_CREATED_PUBLISHED"
+}
+```
+
+#### Health
+
+```http
+GET /health
+```
+
+Response example:
+
+```json
+{
+  "status": "UP"
+}
+```
+
+### Pricing Service
+
+#### Quote
+
+**Request**
+
+```http
+POST /api/v1/pricer/quote
+Content-Type: application/json
+```
+
+**Body**
+
+```json
+{
+  "jobId": "d2d95a2c-9b9d-4f24-bdb3-c2f4d2a11db5",
+  "correlationId": "70284642-f8bb-48f9-a50f-171bcb1d8248",
+  "amount": 100.0
+}
+```
+
+**Response (`200 OK`)**
+
+```json
+{
+  "jobId": "d2d95a2c-9b9d-4f24-bdb3-c2f4d2a11db5",
+  "correlationId": "70284642-f8bb-48f9-a50f-171bcb1d8248",
+  "baseAmount": 100.0,
+  "finalPrice": 118.0,
+  "currency": "USD",
+  "calculatedAt": "2026-03-02T11:10:55.354623+00:00"
+}
+```
+
+#### Health
+
+```http
+GET /health
+```
+
+### Job Processing Worker Health
+
+```http
+GET /health
+```
+
+Response example:
+
+```json
+{
+  "status": "UP"
+}
+```
+
+## Event Topics
+
+- `job-created` with subscription `dps-sub`
+- `job-processed` with subscription `java-sub`
+
+Flow:
+
+- Job Manager publishes `JobCreated` to `job-created`.
+- Job Processing Worker consumes `job-created` and publishes `JobProcessed` to `job-processed`.
+- Java consumes `job-processed` and invokes Pricing Service.
+
+---
+
+## Product CRUD API (Java)
+
+Base URL:
 
 ```text
 http://localhost:8080/api/v1/products
 ```
 
-## Data Model
-
-`Product` fields in API responses:
+### Data Model
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | Long | Auto-generated |
-| `name` | String | Stored as non-null in DB |
-| `price` | Double | Stored as non-null in DB |
-| `description` | String | Optional, max DB column length 500 |
-| `createdAt` | LocalDateTime | Set automatically on insert |
-| `updatedAt` | LocalDateTime | Set on insert and update |
+| `name` | String | Non-null in DB |
+| `price` | Double | Non-null in DB |
+| `description` | String | Optional, max length 500 |
+| `createdAt` | LocalDateTime | Set on insert |
+| `updatedAt` | LocalDateTime | Set on insert/update |
 
-## Endpoints
+### Endpoints
 
-### 1) Get all products
-
-**Request**
+#### 1) Get all products
 
 ```http
 GET /api/v1/products
 ```
 
-**Example**
+Example:
 
 ```bash
 curl http://localhost:8080/api/v1/products
 ```
 
-**Success response (`200 OK`)**
+Success: `200 OK`
 
-```json
-[
-  {
-    "id": 1,
-    "name": "Wireless Headphones",
-    "price": 79.99,
-    "description": "High-quality Bluetooth wireless headphones with noise cancellation",
-    "createdAt": "2026-02-18T10:30:45.123456",
-    "updatedAt": "2026-02-18T10:30:45.123456"
-  }
-]
-```
-
----
-
-### 2) Get product by id
-
-**Request**
+#### 2) Get product by ID
 
 ```http
 GET /api/v1/products/{id}
 ```
 
-**Path params**
-
-| Name | Type | Required |
-|---|---|---|
-| `id` | Long | Yes |
-
-**Example**
+Example:
 
 ```bash
 curl http://localhost:8080/api/v1/products/1
 ```
 
-**Success response (`200 OK`)**
+Success: `200 OK`  
+Not found: `404 Not Found` (empty body)
 
-```json
-{
-  "id": 1,
-  "name": "Wireless Headphones",
-  "price": 79.99,
-  "description": "High-quality Bluetooth wireless headphones with noise cancellation",
-  "createdAt": "2026-02-18T10:30:45.123456",
-  "updatedAt": "2026-02-18T10:30:45.123456"
-}
-```
-
-**Not found (`404 Not Found`)**
-
-```text
-empty body
-```
-
----
-
-### 3) Create product
-
-**Request**
+#### 3) Create product
 
 ```http
 POST /api/v1/products
 Content-Type: application/json
 ```
 
-**Request body**
-
-```json
-{
-  "name": "Mechanical Keyboard",
-  "price": 149.99,
-  "description": "RGB mechanical keyboard with Cherry MX switches"
-}
-```
-
-**Example**
+Example:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/products \
@@ -126,116 +227,42 @@ curl -X POST http://localhost:8080/api/v1/products \
   }'
 ```
 
-**Success response (`201 Created`)**
+Success: `201 Created`
 
-```json
-{
-  "id": 4,
-  "name": "Mechanical Keyboard",
-  "price": 149.99,
-  "description": "RGB mechanical keyboard with Cherry MX switches",
-  "createdAt": "2026-02-18T10:40:30.456789",
-  "updatedAt": "2026-02-18T10:40:30.456789"
-}
-```
-
----
-
-### 4) Update product
-
-**Request**
+#### 4) Update product
 
 ```http
 PUT /api/v1/products/{id}
 Content-Type: application/json
 ```
 
-**Path params**
+Success: `200 OK`  
+Not found: `404 Not Found` (empty body)
 
-| Name | Type | Required |
-|---|---|---|
-| `id` | Long | Yes |
-
-**Request body**
-
-```json
-{
-  "name": "Updated Mechanical Keyboard",
-  "price": 159.99,
-  "description": "Updated description"
-}
-```
-
-**Example**
-
-```bash
-curl -X PUT http://localhost:8080/api/v1/products/4 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Updated Mechanical Keyboard",
-    "price": 159.99,
-    "description": "Updated description"
-  }'
-```
-
-**Success response (`200 OK`)**
-
-Returns the updated product JSON.
-
-**Not found (`404 Not Found`)**
-
-```text
-empty body
-```
-
----
-
-### 5) Delete product
-
-**Request**
+#### 5) Delete product
 
 ```http
 DELETE /api/v1/products/{id}
 ```
 
-**Path params**
-
-| Name | Type | Required |
-|---|---|---|
-| `id` | Long | Yes |
-
-**Example**
-
-```bash
-curl -X DELETE http://localhost:8080/api/v1/products/4
-```
-
-**Success response (`204 No Content`)**
-
-```text
-empty body
-```
-
-**Not found (`404 Not Found`)**
-
-```text
-empty body
-```
+Success: `204 No Content`  
+Not found: `404 Not Found` (empty body)
 
 ## Status Codes Used
 
 | Code | Meaning | Used By |
 |---|---|---|
-| `200` | OK | GET all, GET by id, PUT update |
-| `201` | Created | POST create |
-| `204` | No Content | DELETE success |
-| `404` | Not Found | GET by id, PUT, DELETE when id does not exist |
+| `200` | OK | Product GET/PUT, Pricing Service quote, health endpoints |
+| `201` | Created | Product create |
+| `202` | Accepted | Workflow start, Job create |
+| `204` | No Content | Product delete |
+| `404` | Not Found | Product by ID/update/delete when ID does not exist |
 
 ## Validation and Error Behavior
 
-- No explicit Bean Validation annotations are currently applied to request payloads.
-- Invalid/missing request fields may result in framework or persistence-level errors depending on payload and DB constraints.
-- This service does not currently define a custom global exception response shape.
+- No explicit Bean Validation annotations are applied to product/workflow request payloads in Java controllers.
+- Invalid or missing fields may surface as framework- or persistence-level errors.
+- No custom global error response contract is currently defined.
 
 ## Quick Test
 
@@ -245,7 +272,8 @@ Run the included script:
 bash test-api.sh
 ```
 
-## Related Endpoints
+## Java Actuator Endpoints
 
-- Health: `GET /actuator/health`
-- Metrics: `GET /actuator/metrics`
+- `GET /actuator/health`
+- `GET /actuator/metrics`
+- `GET /actuator/prometheus`

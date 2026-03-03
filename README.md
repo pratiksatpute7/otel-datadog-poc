@@ -1,177 +1,100 @@
-# OpenTelemetry Spring Boot POC
+# Java + .NET Event Workflow POC
 
-A Spring Boot 3 CRUD application used to demonstrate OpenTelemetry-based tracing with Datadog runtime integration.
+This repository runs a distributed workflow across one Java Spring Boot service and three .NET 8 services with Azure Service Bus Emulator and OpenTelemetry tracing exported through Datadog `serverless-init`.
 
-## What This Project Uses
+## Architecture at a Glance
 
-- Java 17
-- Spring Boot 3.2.3 (`web`, `data-jpa`, `actuator`)
-- H2 in-memory database
-- OpenTelemetry Java Agent (downloaded in `Dockerfile`)
-- Datadog `serverless-init` wrapper in container runtime
-- Docker Compose for local orchestration
+1. Client calls Java workflow API.
+2. Java calls Job Manager (`.NET`) via HTTP.
+3. Job Manager publishes `JobCreated` to topic `job-created`.
+4. Job Processing Worker (`.NET`) consumes `job-created`, then publishes `JobProcessed` to `job-processed`.
+5. Java consumes `job-processed` and calls Pricing Service (`.NET`) via HTTP.
 
-## How It Is Implemented
+## Services and Ports
 
-### Application Flow
+- Java app (`app`): `http://localhost:8080`
+- Job Manager API (`job-manager`): `http://localhost:8081`
+- Job Processing Worker health endpoint (`dps-worker`): `http://localhost:8082/health`
+- Pricing Service API (`pricer`): `http://localhost:8083`
+- Azure Service Bus Emulator (`servicebus-emulator`) + SQL Edge (`sqledge`)
 
-1. API requests hit `ProductController` (`/api/v1/products`).
-2. Controller delegates business logic to `ProductService`.
-3. Service uses `ProductRepository` (`JpaRepository<Product, Long>`) for persistence.
-4. Data is stored in in-memory H2 and seeded at startup by `DataInitializer`.
+## Prerequisites
 
-### Observability Flow
+- Docker
+- Docker Compose (`docker compose` or `docker-compose`)
 
-1. `java -javaagent:opentelemetry-javaagent.jar -jar app.jar` enables automatic instrumentation.
-2. Spring tracing and OTLP settings are configured in `application.yml`.
-3. Traces are exported to `http://datadog-agent:4317` (OTLP gRPC endpoint configured for runtime).
-4. Container entrypoint uses Datadog `serverless-init` (`/app/datadog-init`).
+## Quick Start
 
-End-to-end path: OpenTelemetry Java Agent auto-instruments the app, traces are sent over OTLP to the Datadog serverless wrapper runtime, and that runtime forwards telemetry to Datadog.
-
-### Manual Custom Spans (alongside auto-instrumentation)
-
-This project now includes `CustomSpanHelper` for manual spans:
-
-- `inSpan(spanName, action)` creates a span as a child of the current trace context.
-- `inNewTrace(spanName, action)` creates a new root span with no parent (new trace).
-- `setAttribute(span, key, value)` lets you add attributes case-by-case.
-
-Example usage in service code:
-
-```java
-return customSpanHelper.inSpan("product.service.get_by_id", span -> {
-	customSpanHelper.setAttribute(span, "product.id", id);
-	Optional<Product> product = productRepository.findById(id);
-	if (product.isEmpty()) {
-		span.addEvent("product.not_found");
-	}
-	return product;
-});
-```
-
-Example for forcing a new trace:
-
-```java
-customSpanHelper.inNewTrace("product.seed.initialize", span -> {
-	customSpanHelper.setAttribute(span, "product.seed.count", 3);
-	// business logic
-	return null;
-});
-```
-
-Current implementation locations:
-
-- `src/main/java/com/example/demo/tracing/CustomSpanHelper.java`
-- `src/main/java/com/example/demo/service/ProductService.java`
-- `src/main/java/com/example/demo/DataInitializer.java`
-
-## Project Structure
-
-```
-otel-datadog/
-├── src/main/java/com/example/demo/
-│   ├── DemoApplication.java
-│   ├── DataInitializer.java
-│   ├── controller/ProductController.java
-│   ├── service/ProductService.java
-│   ├── repository/ProductRepository.java
-│   └── model/Product.java
-├── src/main/resources/application.yml
-├── Dockerfile
-├── docker-compose.yml
-├── start.sh
-├── test-api.sh
-├── README.md
-├── API.md
-└── DEVELOPMENT.md
-```
-
-## API Summary
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/api/v1/products` | List all products |
-| GET | `/api/v1/products/{id}` | Get product by id |
-| POST | `/api/v1/products` | Create product |
-| PUT | `/api/v1/products/{id}` | Update product |
-| DELETE | `/api/v1/products/{id}` | Delete product |
-
-Detailed request/response examples: see `API.md`.
-
-## Run the Project
-
-### Prerequisites
-
-- Docker + Docker Compose
-- (Optional for local JVM run) Java 17, Maven 3.8+
-
-### Option 1: Docker Compose
-
-Create a local env file for secrets first:
+1. Create env file:
 
 ```bash
 cp .env.example .env
-# then edit .env and set your DD_API_KEY
 ```
+
+2. Add required values to `.env`:
+
+```dotenv
+DD_API_KEY=your_datadog_api_key_here
+DD_SITE=datadoghq.com
+ACCEPT_EULA=Y
+SQL_PASSWORD=YourStrong(!)Password
+SQL_WAIT_INTERVAL=15
+EMULATOR_HTTP_PORT=5300
+```
+
+3. Start the full stack:
 
 ```bash
-cd /Users/pratiksatpute/Developer/Projects/otel-datadog
-docker-compose up --build
+docker-compose up --build -d
 ```
 
-Or use helper script:
+Or use the helper script:
 
 ```bash
 ./start.sh
 ```
 
-### Option 2: Local JVM (without containers)
+## Health Checks
 
 ```bash
-mvn clean package
-java -jar target/otel-datadog-1.0.0.jar
-```
-
-## Verify Locally
-
-```bash
-# Health
 curl http://localhost:8080/actuator/health
-
-# Products
-curl http://localhost:8080/api/v1/products
-
-# Run scripted CRUD checks
-bash test-api.sh
+curl http://localhost:8081/health
+curl http://localhost:8082/health
+curl http://localhost:8083/health
 ```
 
-## Runtime Configuration
+## Trigger the Workflow
 
-### `application.yml` highlights
+```bash
+curl -X POST http://localhost:8080/api/v1/workflow/start \
+  -H "Content-Type: application/json" \
+  -d '{"jobName":"pricing-job","amount":100.0}'
+```
 
-- App name: `otel-datadog`
-- Server port: `8080`
-- H2 datasource: `jdbc:h2:mem:testdb`
-- JPA schema: `ddl-auto: create-drop`
-- Actuator exposure: `health`, `metrics`, `prometheus`
-- Trace sampling: `1.0` (100%)
-- OTLP tracing endpoint: `http://datadog-agent:4317`
+Expected response (`202 Accepted`) from Java API:
 
-### Docker runtime highlights
+```json
+{
+  "jobId": "<uuid>",
+  "correlationId": "<uuid>",
+  "status": "JOB_SUBMITTED"
+}
+```
 
-- Multi-stage build (`maven` builder + `eclipse-temurin` runtime)
-- Datadog `serverless-init` copied from `datadog/serverless-init:latest`
-- OpenTelemetry Java agent downloaded at build time
-- App listens on `8080`
+## View Logs
+
+```bash
+docker-compose logs -f app job-manager dps-worker pricer servicebus-emulator
+```
+
+## Stop the Stack
+
+```bash
+docker-compose down
+```
 
 ## Notes
 
-- H2 console is enabled at `/h2-console`.
-- `404` responses from product-by-id/update/delete return empty bodies.
-- No request validation annotations are currently defined on `Product` request payloads.
-
-## Additional Docs
-
-- API contract: `API.md`
-- Development details: `DEVELOPMENT.md`
+- Service Bus emulator entities are defined in `infra/servicebus/Config.json`.
+- Runtime connection strings use emulator mode (`UseDevelopmentEmulator=true`).
+- Product CRUD endpoints are available at `/api/v1/products`.

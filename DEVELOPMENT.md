@@ -1,198 +1,92 @@
 # Development Guide
 
-This guide documents the current implementation for local development and code changes.
-
 ## Prerequisites
 
-- Java 17+
-- Maven 3.8+
-- Docker + Docker Compose (for containerized run)
-- `curl` for quick endpoint checks
+- Docker
+- Docker Compose (`docker compose` or `docker-compose`)
+- Java 17 + Maven (only needed for local Java builds outside containers)
+- .NET 8 SDK (only needed for local .NET builds outside containers)
 
-## Local Setup
+## System Overview
 
-### 1) Build and run on JVM
+- Java Spring Boot app (`app`) orchestrates the workflow.
+- Job Manager API (`job-manager`) publishes `JobCreated` events.
+- Job Processing Worker (`dps-worker`) consumes `job-created` and publishes `job-processed`.
+- Pricing Service API (`pricer`) calculates and returns a quote.
+- Azure Service Bus Emulator + SQL Edge run in Docker Compose.
+
+## Environment Setup
+
+Create a local env file:
 
 ```bash
-cd /Users/pratiksatpute/Developer/Projects/otel-datadog
-mvn clean package
-java -jar target/otel-datadog-1.0.0.jar
+cp .env.example .env
 ```
 
-### 2) Build and run with Docker Compose
+Set these values in `.env`:
+
+```dotenv
+DD_API_KEY=your_datadog_api_key_here
+DD_SITE=datadoghq.com
+ACCEPT_EULA=Y
+SQL_PASSWORD=YourStrong(!)Password
+SQL_WAIT_INTERVAL=15
+EMULATOR_HTTP_PORT=5300
+```
+
+## Run Locally with Docker Compose
 
 ```bash
-cd /Users/pratiksatpute/Developer/Projects/otel-datadog
-docker-compose up --build
+docker-compose up --build -d
 ```
 
-or
+Or use:
 
 ```bash
 ./start.sh
 ```
 
-## Implementation Overview
+## Service Endpoints
 
-### Package layout
+- Java app: `http://localhost:8080`
+- Job Manager: `http://localhost:8081`
+- Job Processing Worker health: `http://localhost:8082/health`
+- Pricing Service: `http://localhost:8083`
 
-```
-src/main/java/com/example/demo/
-├── DemoApplication.java
-├── DataInitializer.java
-├── controller/ProductController.java
-├── service/ProductService.java
-├── repository/ProductRepository.java
-└── model/Product.java
-```
-
-### Current design
-
-- `ProductController`: REST endpoints under `/api/v1/products`
-- `ProductService`: transactional create/update/delete operations
-- `ProductRepository`: Spring Data JPA repository
-- `Product`: JPA entity with lifecycle callbacks (`@PrePersist`, `@PreUpdate`)
-- `DataInitializer`: seeds 3 products on startup
-
-### Request handling behavior
-
-- `GET /{id}`, `PUT /{id}`, `DELETE /{id}` return `404` with empty body when ID does not exist.
-- Create/update use `@RequestBody Product` directly.
-- There is no custom exception handler class currently.
-
-## Observability Details
-
-### Dependencies in use
-
-- `io.opentelemetry:opentelemetry-api`
-- `org.springframework.boot:spring-boot-starter-actuator`
-
-### Runtime instrumentation
-
-- Docker runtime launches app with:
+## Common Commands
 
 ```bash
-java -javaagent:opentelemetry-javaagent.jar -jar app.jar
-```
+# Health checks
+curl http://localhost:8080/actuator/health
+curl http://localhost:8081/health
+curl http://localhost:8082/health
+curl http://localhost:8083/health
 
-- Container entrypoint is Datadog `serverless-init` (`/app/datadog-init`).
+# Trigger workflow
+curl -X POST http://localhost:8080/api/v1/workflow/start \
+  -H "Content-Type: application/json" \
+  -d '{"jobName":"pricing-job","amount":100.0}'
 
-Telemetry path in this project: OpenTelemetry Java Agent performs auto-instrumentation, traces are emitted via OTLP to the Datadog serverless wrapper runtime, and that runtime forwards data to Datadog.
-
-### Manual instrumentation
-
-Manual OpenTelemetry spans are implemented using:
-
-- `src/main/java/com/example/demo/config/OpenTelemetryConfig.java`
-- `src/main/java/com/example/demo/tracing/CustomSpanHelper.java`
-
-`CustomSpanHelper` provides:
-
-- `inSpan(name, action)` for child spans on the current trace
-- `inNewTrace(name, action)` for creating a new root trace when required
-- `setAttribute(span, key, value)` for flexible attribute assignment
-
-Manual spans are currently added in:
-
-- `ProductService` methods for CRUD business operations
-- `DataInitializer` startup seed flow (`product.seed.initialize`) as a new trace example
-
-Pattern for adding attributes/events case by case:
-
-```java
-return customSpanHelper.inSpan("operation.name", span -> {
-  customSpanHelper.setAttribute(span, "entity.id", id);
-  span.addEvent("event.name");
-  return actionResult;
-});
-```
-
-### Configuration (`application.yml`)
-
-```yaml
-management:
-  tracing:
-    sampling:
-      probability: 1.0
-  otlp:
-    tracing:
-      endpoint: http://datadog-agent:4317
-  metrics:
-    export:
-      otlp:
-        enabled: true
-```
-
-Also present:
-
-```yaml
-otel:
-  exporter:
-    otlp:
-      protocol: grpc
-      endpoint: http://datadog-agent:4317
-```
-
-## Database and Actuator
-
-- DB: H2 in-memory (`jdbc:h2:mem:testdb`)
-- Schema mode: `create-drop`
-- H2 console: `http://localhost:8080/h2-console`
-- Actuator exposed: `health`, `metrics`, `prometheus`
-
-## Useful Commands
-
-```bash
-# Build
-mvn clean package
-
-# Run tests
-mvn test
-
-# Run app locally
-java -jar target/otel-datadog-1.0.0.jar
-
-# Run API smoke script
+# Run product CRUD smoke test script
 bash test-api.sh
 
-# Docker logs
-docker-compose logs app
-docker-compose logs -f app
+# Follow logs
+docker-compose logs -f app job-manager dps-worker pricer servicebus-emulator
 
 # Stop stack
 docker-compose down
 ```
 
-## How to Extend the API
+## Tracing Notes
 
-1. Add method in `ProductService`.
-2. Add repository query in `ProductRepository` (if needed).
-3. Add endpoint mapping in `ProductController`.
-4. Test with `curl` or `test-api.sh`.
+- OpenTelemetry spans are emitted by Java and .NET services.
+- Azure SDK spans are enabled through `Azure.Messaging.*` activity source in .NET services.
+- Service Bus tracing context is propagated through message metadata and correlation IDs.
 
-## Troubleshooting
+## Service Bus Emulator Notes
 
-### App does not start
-
-```bash
-docker-compose logs app
-```
-
-### Health endpoint not UP
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-### Endpoint returns 404 unexpectedly
-
-- Verify requested product ID exists.
-- Re-check seeded data by calling:
-
-```bash
-curl http://localhost:8080/api/v1/products
-```
-
-### Port conflict on 8080
-
-- Change host mapping in `docker-compose.yml` (for example `8081:8080`) and use the updated host port for requests.
+- Runtime connection strings use `UseDevelopmentEmulator=true`.
+- Topics/subscriptions are declared in `infra/servicebus/Config.json`:
+  - `job-created` / `dps-sub`
+  - `job-processed` / `java-sub`
+- Emulator setup is for development/testing only.

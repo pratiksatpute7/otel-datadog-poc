@@ -1,0 +1,30 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Topics": [
+          {
+            "Name": "job-created",
+            "Subscriptions": [
+              {
+                "Name": "dps-sub"
+              }
+            ]
+          },
+          {
+            "Name": "job-processed",
+            "Subscriptions": [
+              {
+                "Name": "java-sub"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "Logging": {
+      "Type": "Console"
+    }
+  }
+}

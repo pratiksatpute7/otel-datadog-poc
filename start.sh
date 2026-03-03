@@ -6,7 +6,7 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "========================================="
-echo "OpenTelemetry Spring Boot POC"
+echo "OpenTelemetry Java + .NET Workflow POC"
 echo "========================================="
 echo ""
 echo "Project Path: $PROJECT_DIR"
@@ -36,10 +36,10 @@ cd "$PROJECT_DIR"
 echo "Pulling Docker images..."
 docker-compose pull
 
-# Build the application
+# Build all application services
 echo ""
-echo "Building application (this may take a few minutes)..."
-docker-compose build app
+echo "Building services (this may take a few minutes)..."
+docker-compose build app job-manager dps-worker pricer
 
 # Start services
 echo ""
@@ -83,12 +83,18 @@ echo ""
 echo "Quick Links:"
 echo "  API Base: http://localhost:8080"
 echo "  Get Products: curl http://localhost:8080/api/v1/products"
+echo "  Start Workflow: curl -X POST http://localhost:8080/api/v1/workflow/start -H 'Content-Type: application/json' -d '{\"jobName\":\"pricing-job\",\"amount\":100.0}'"
 echo "  Health: http://localhost:8080/actuator/health"
 echo "  Metrics: http://localhost:8080/actuator/metrics"
+echo "  Job Manager Health: http://localhost:8081/health"
+echo "  Pricer Health: http://localhost:8083/health"
 echo ""
 echo "View Logs:"
-echo "  App: docker-compose logs -f app"
-echo "  Agent: docker-compose logs -f datadog-agent"
+echo "  Java app: docker-compose logs -f app"
+echo "  Job Manager: docker-compose logs -f job-manager"
+echo "  DPS Worker: docker-compose logs -f dps-worker"
+echo "  Pricer: docker-compose logs -f pricer"
+echo "  Service Bus Emulator: docker-compose logs -f servicebus-emulator"
 echo ""
 echo "Stop Services:"
 echo "  docker-compose down"
